@@ -113,7 +113,7 @@ pub struct Initialize<'info> {
     )]
     escrowed_x_tokens: AccountInfo<'info>,
 
-    #[account(seeds = [b"authority".as_ref()], bump = authority_bump)]
+    #[account(seeds = [SEED], bump = authority_bump)]
     program_authority: AccountInfo<'info>,
     token_program: Program<'info, Token>,
     rent: Sysvar<'info, Rent>,
@@ -140,7 +140,7 @@ pub struct Execute<'info> {
     )]
     our_y_tokens: Account<'info, TokenAccount>,
 
-    #[account(seeds = [b"authority".as_ref()], bump = authority_bump)]
+    #[account(seeds = [SEED], bump = authority_bump)]
     program_authority: AccountInfo<'info>,
     token_program: Program<'info, Token>,
 }
@@ -163,7 +163,7 @@ pub struct Cancel<'info> {
     )]
     our_x_tokens: Account<'info, TokenAccount>,
 
-    #[account(seeds = [b"authority".as_ref()], bump = authority_bump)]
+    #[account(seeds = [SEED], bump = authority_bump)]
     program_authority: AccountInfo<'info>,
     token_program: Program<'info, Token>,
 }
