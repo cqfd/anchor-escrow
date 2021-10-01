@@ -3,19 +3,20 @@ use anchor_spl::token::{Mint, Token, TokenAccount};
 
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
+static SEED: &[u8] = b"authority";
+
 #[program]
 pub mod escrow {
     use super::*;
     pub fn initialize(
         ctx: Context<Initialize>,
-        escrowed_x_tokens_bump: u8,
+        _authority_bump: u8,
         x_amount: u64,
         y_amount: u64,
     ) -> ProgramResult {
         let escrow = &mut ctx.accounts.escrow;
-        escrow.us = ctx.accounts.us.key().clone();
-        escrow.escrowed_x_tokens = ctx.accounts.escrowed_x_tokens.key.clone();
-        escrow.escrowed_x_tokens_bump = escrowed_x_tokens_bump;
+        escrow.us = ctx.accounts.us.key();
+        escrow.escrowed_x_tokens = ctx.accounts.escrowed_x_tokens.key();
         escrow.y_amount = y_amount;
         escrow.y_mint = ctx.accounts.y_mint.key();
 
@@ -34,19 +35,16 @@ pub mod escrow {
         Ok(())
     }
 
-    pub fn execute(ctx: Context<Execute>) -> ProgramResult {
+    pub fn execute(ctx: Context<Execute>, authority_bump: u8) -> ProgramResult {
         anchor_spl::token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 anchor_spl::token::Transfer {
                     from: ctx.accounts.escrowed_x_tokens.to_account_info(),
                     to: ctx.accounts.their_x_tokens.to_account_info(),
-                    authority: ctx.accounts.escrowed_x_tokens.to_account_info(),
+                    authority: ctx.accounts.program_authority.to_account_info(),
                 },
-                &[&[
-                    ctx.accounts.escrow.key().as_ref(),
-                    &[ctx.accounts.escrow.escrowed_x_tokens_bump],
-                ]],
+                &[&[SEED, &[authority_bump]]],
             ),
             ctx.accounts.escrowed_x_tokens.amount,
         )?;
@@ -66,19 +64,16 @@ pub mod escrow {
         Ok(())
     }
 
-    pub fn cancel(ctx: Context<Cancel>) -> ProgramResult {
+    pub fn cancel(ctx: Context<Cancel>, authority_bump: u8) -> ProgramResult {
         anchor_spl::token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 anchor_spl::token::Transfer {
                     from: ctx.accounts.escrowed_x_tokens.to_account_info(),
                     to: ctx.accounts.our_x_tokens.to_account_info(),
-                    authority: ctx.accounts.escrowed_x_tokens.to_account_info(),
+                    authority: ctx.accounts.program_authority.to_account_info(),
                 },
-                &[&[
-                    ctx.accounts.escrow.key().as_ref(),
-                    &[ctx.accounts.escrow.escrowed_x_tokens_bump],
-                ]],
+                &[&[SEED, &[authority_bump]]],
             ),
             ctx.accounts.escrowed_x_tokens.amount,
         )?;
@@ -87,7 +82,7 @@ pub mod escrow {
 }
 
 #[derive(Accounts)]
-#[instruction(escrowed_tokens_bump: u8)]
+#[instruction(authority_bump: u8)]
 pub struct Initialize<'info> {
     us: Signer<'info>,
 
@@ -103,18 +98,19 @@ pub struct Initialize<'info> {
         init,
         payer = us,
         token::mint = x_mint,
-        token::authority = escrowed_x_tokens,
-        seeds = [escrow.key().as_ref()],
-        bump = escrowed_tokens_bump
+        token::authority = program_authority,
     )]
     escrowed_x_tokens: AccountInfo<'info>,
 
+    #[account(seeds = [b"authority".as_ref()], bump = authority_bump)]
+    program_authority: AccountInfo<'info>,
     token_program: Program<'info, Token>,
     rent: Sysvar<'info, Rent>,
     system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
+#[instruction(authority_bump: u8)]
 pub struct Execute<'info> {
     them: Signer<'info>,
 
@@ -133,10 +129,13 @@ pub struct Execute<'info> {
     )]
     our_y_tokens: Account<'info, TokenAccount>,
 
+    #[account(seeds = [b"authority".as_ref()], bump = authority_bump)]
+    program_authority: AccountInfo<'info>,
     token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
+#[instruction(authority_bump: u8)]
 pub struct Cancel<'info> {
     us: Signer<'info>,
 
@@ -153,6 +152,8 @@ pub struct Cancel<'info> {
     )]
     our_x_tokens: Account<'info, TokenAccount>,
 
+    #[account(seeds = [b"authority".as_ref()], bump = authority_bump)]
+    program_authority: AccountInfo<'info>,
     token_program: Program<'info, Token>,
 }
 
@@ -161,7 +162,11 @@ pub struct Cancel<'info> {
 pub struct Escrow {
     us: Pubkey,
     escrowed_x_tokens: Pubkey,
-    escrowed_x_tokens_bump: u8,
     y_mint: Pubkey,
     y_amount: u64,
+}
+
+#[account]
+pub struct TheProgramAuthoritySingleton {
+    authority_bump: u8,
 }

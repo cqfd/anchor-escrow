@@ -10,6 +10,8 @@ describe('escrow', () => {
   anchor.setProvider(provider);
 
   const program = anchor.workspace.Escrow;
+  let programAuthority;
+  let programAuthorityBump;
 
   const us = provider.wallet.payer; // anchor.web3.Keypair.generate();
   const them = anchor.web3.Keypair.generate();
@@ -22,6 +24,12 @@ describe('escrow', () => {
 
   before(async () => {
     await provider.connection.requestAirdrop(them.publicKey, 1000);
+    const [_programAuthority, _authorityBump] = await anchor.web3.PublicKey.findProgramAddress(
+      ["authority"], 
+      program.programId
+    );
+    programAuthority = _programAuthority;
+    programAuthorityBump = _authorityBump;
     X = await spl.Token.createMint(
       provider.connection,
       provider.wallet.payer,
@@ -42,19 +50,16 @@ describe('escrow', () => {
 
   it('It works!', async () => {
     const escrow = anchor.web3.Keypair.generate();
-
-    const [escrowedXTokens, bump] = await anchor.web3.PublicKey.findProgramAddress(
-      [escrow.publicKey.toBuffer()],
-      program.programId
-    );
+    const escrowedXTokens = anchor.web3.Keypair.generate();
 
     const ourXTokens = await X.createAccount(us.publicKey);
     await X.mintTo(ourXTokens, provider.wallet.payer, [], startXBalance);
     const ourYTokens = await Y.createAccount(us.publicKey);
 
+    debugger;
     // Add your test here.
     await program.rpc.initialize(
-      new anchor.BN(bump),
+      new anchor.BN(programAuthorityBump),
       new anchor.BN(100),
       new anchor.BN(200),
       {
@@ -64,16 +69,17 @@ describe('escrow', () => {
           yMint: Y.publicKey,
           ourXTokens: ourXTokens,
           escrow: escrow.publicKey,
-          escrowedXTokens: escrowedXTokens,
+          escrowedXTokens: escrowedXTokens.publicKey,
+          programAuthority: programAuthority,
           tokenProgram: spl.TOKEN_PROGRAM_ID,
           rent: anchor.web3.SYSVAR_RENT_PUBKEY,
           systemProgram: anchor.web3.SystemProgram.programId
         },
-        signers: [escrow]
+        signers: [escrowedXTokens, escrow]
       }
     );
 
-    let escrowedXTokensAccount = await X.getAccountInfo(escrowedXTokens);
+    let escrowedXTokensAccount = await X.getAccountInfo(escrowedXTokens.publicKey);
     assert.equal(escrowedXTokensAccount.amount.toNumber(), escrowAmountX);
     assert.equal(escrowedXTokensAccount.mint.toBase58(), X.publicKey.toBase58());
 
@@ -85,21 +91,23 @@ describe('escrow', () => {
     const theirXTokens = await X.createAccount(them.publicKey);
 
     await program.rpc.execute(
+      new anchor.BN(programAuthorityBump),
       {
         accounts: {
-          escrow: escrow.publicKey,
-          escrowedXTokens: escrowedXTokens,
-          ourYTokens: ourYTokens,
           them: them.publicKey,
-          theirXTokens: theirXTokens,
+          escrow: escrow.publicKey,
+          escrowedXTokens: escrowedXTokens.publicKey,
           theirYTokens: theirYTokens,
+          theirXTokens: theirXTokens,
+          ourYTokens: ourYTokens,
+          programAuthority: programAuthority,
           tokenProgram: spl.TOKEN_PROGRAM_ID
         },
         signers: [them]
       }
     );
 
-    escrowedXTokensAccount = await X.getAccountInfo(escrowedXTokens);
+    escrowedXTokensAccount = await X.getAccountInfo(escrowedXTokens.publicKey);
     assert.equal(escrowedXTokensAccount.amount.toNumber(), 0);
 
     theirXTokensAccount = await X.getAccountInfo(theirXTokens);
@@ -112,17 +120,14 @@ describe('escrow', () => {
   it('Supports cancellation!', async () => {
     const escrow = anchor.web3.Keypair.generate();
 
-    const [escrowedXTokens, bump] = await anchor.web3.PublicKey.findProgramAddress(
-      [escrow.publicKey.toBuffer()],
-      program.programId
-    );
+    const escrowedXTokens = anchor.web3.Keypair.generate();
 
     const ourXTokens = await X.createAccount(us.publicKey);
     await X.mintTo(ourXTokens, provider.wallet.payer, [], startXBalance);
 
     // Add your test here.
     await program.rpc.initialize(
-      new anchor.BN(bump),
+      new anchor.BN(programAuthorityBump),
       new anchor.BN(100),
       new anchor.BN(200),
       {
@@ -132,12 +137,13 @@ describe('escrow', () => {
           yMint: Y.publicKey,
           ourXTokens: ourXTokens,
           escrow: escrow.publicKey,
-          escrowedXTokens: escrowedXTokens,
+          escrowedXTokens: escrowedXTokens.publicKey,
+          programAuthority: programAuthority,
           tokenProgram: spl.TOKEN_PROGRAM_ID,
           rent: anchor.web3.SYSVAR_RENT_PUBKEY,
           systemProgram: anchor.web3.SystemProgram.programId
         },
-        signers: [escrow]
+        signers: [escrowedXTokens, escrow]
       }
     );
 
@@ -145,12 +151,14 @@ describe('escrow', () => {
     assert.equal(ourXTokensAccount.amount.toNumber(), startXBalance - escrowAmountX);
 
     await program.rpc.cancel(
+      new anchor.BN(programAuthorityBump),
       {
         accounts: {
           us: provider.wallet.publicKey,
           escrow: escrow.publicKey,
-          escrowedXTokens: escrowedXTokens,
+          escrowedXTokens: escrowedXTokens.publicKey,
           ourXTokens: ourXTokens,
+          programAuthority: programAuthority,
           tokenProgram: spl.TOKEN_PROGRAM_ID
         },
         // signers: [us]
@@ -168,14 +176,16 @@ describe('escrow', () => {
 
     try {
       await program.rpc.execute(
+        new anchor.BN(programAuthorityBump),
         {
           accounts: {
             them: them.publicKey,
             escrow: escrow.publicKey,
-            escrowedXTokens: escrowedXTokens,
+            escrowedXTokens: escrowedXTokens.publicKey,
             theirYTokens: theirYTokens,
             theirXTokens: theirXTokens,
             ourYTokens: ourYTokens,
+            programAuthority: programAuthority,
             tokenProgram: spl.TOKEN_PROGRAM_ID
           },
           signers: [them]
@@ -183,7 +193,9 @@ describe('escrow', () => {
       );
       assert.fail();
     } catch (err) {
-      assert.equal(err.code, 0xa7)
+      // The escrow account was closed/reclaimed by solana, so it no longer
+      // belongs to our program.
+      assert.equal(err.code, 167);
     }
   });
 });
