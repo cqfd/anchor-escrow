@@ -77,6 +77,17 @@ pub mod escrow {
             ),
             ctx.accounts.escrowed_x_tokens.amount,
         )?;
+
+        anchor_spl::token::close_account(CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            anchor_spl::token::CloseAccount {
+                account: ctx.accounts.escrowed_x_tokens.to_account_info(),
+                destination: ctx.accounts.our_x_tokens.to_account_info(),
+                authority: ctx.accounts.program_authority.to_account_info(),
+            },
+            &[&[SEED, &[authority_bump]]],
+        ))?;
+
         Ok(())
     }
 }
